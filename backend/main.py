@@ -2,7 +2,12 @@ import json
 from uuid import uuid4
 from datetime import datetime, timezone
 
+import httpx
+
+from fastapi import UploadFile, File
+from fastapi.responses import StreamingResponse
 from fastapi import FastAPI, HTTPException, Header
+
 from pydantic import BaseModel
 
 from langchain_core.messages import HumanMessage, ToolMessage
@@ -15,6 +20,7 @@ from backend.services.request_service import (
     RequestService,
     RequestValidationError,
 )
+from backend.config import settings
 
 app = FastAPI(
     title="KIT Student Assistant",
@@ -415,11 +421,14 @@ async def chat(
                 try:
                     tool_result = json.loads(msg.content)
 
-                    if tool_result.get("status") == "pending_confirmation":
+                    if (
+                            isinstance(tool_result, dict)
+                            and tool_result.get("status") == "pending_confirmation"
+                    ):
                         pending_confirmation = {
                             "draft_id": tool_result["draft_id"],
                             "request": tool_result["request"],
-                            "status": tool_result["status"],
+                            "status": tool_result["status"]
                         }
 
                 except (json.JSONDecodeError, KeyError):
@@ -437,7 +446,144 @@ async def chat(
         }
 
     except Exception:
+        import logging
+
+        logging.exception("Chat endpoint failed")
+
         raise HTTPException(
             status_code=502,
             detail="The assistant is temporarily unavailable. Please try again."
+        )
+
+
+class VoiceSpeakRequest(BaseModel):
+    text: str
+
+
+@app.post("/voice/transcribe")
+async def transcribe_audio(file: UploadFile = File(...)):
+    """Convert recorded audio into text using Deepgram."""
+
+    if not settings.DEEPGRAM_API_KEY:
+        raise HTTPException(503, "Speech recognition is unavailable.")
+
+    audio = await file.read()
+
+    if not audio:
+        raise HTTPException(400, "No audio received.")
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                "https://api.deepgram.com/v1/listen",
+                params={
+                    "model": "nova-3",
+                    "smart_format": "true",
+                    "language": "en",
+                },
+                headers={
+                    "Authorization": f"Token {settings.DEEPGRAM_API_KEY}",
+                    "Content-Type": file.content_type or "audio/wav",
+                },
+                content=audio,
+            )
+
+            response.raise_for_status()
+            data = response.json()
+
+        transcript = (
+            data["results"]["channels"][0]
+            ["alternatives"][0]["transcript"]
+        )
+
+        return {"transcript": transcript}
+
+    except Exception:
+        raise HTTPException(
+            502, "Could not transcribe audio. Please try typing instead."
+        )
+
+
+
+@app.post("/voice/speak")
+async def generate_speech(request: VoiceSpeakRequest):
+    """Convert assistant text into audio using ElevenLabs."""
+
+    if not settings.ELEVENLABS_API_KEY or not settings.ELEVENLABS_VOICE_ID:
+        raise HTTPException(
+            status_code=503,
+            detail="Voice generation is unavailable."
+        )
+
+    if not request.text.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Text cannot be empty."
+        )
+
+    # Construct the ElevenLabs API URL.
+    url = (
+        f"https://api.elevenlabs.io/v1/text-to-speech/"
+        f"{settings.ELEVENLABS_VOICE_ID}"
+    )
+
+    # Authentication and response format.
+    headers = {
+        "xi-api-key": settings.ELEVENLABS_API_KEY,
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg",
+    }
+
+    # Text and voice model.
+    payload = {
+        "text": request.text,
+        "model_id": "eleven_multilingual_v2",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+
+            response = await client.post(
+                url,
+                headers=headers,
+                json=payload,
+            )
+
+            print("ElevenLabs status:", response.status_code)
+            print("ElevenLabs response type:",
+                  response.headers.get("content-type"))
+            print("Audio bytes:", len(response.content))
+
+            # Raise an error if ElevenLabs rejects the request.
+            response.raise_for_status()
+
+            if not response.content:
+                raise HTTPException(
+                    status_code=502,
+                    detail="ElevenLabs returned empty audio."
+                )
+
+            return StreamingResponse(
+                iter([response.content]),
+                media_type="audio/mpeg"
+            )
+
+    except httpx.HTTPStatusError as error:
+        # Temporary debugging: inspect the provider's error.
+        print("ElevenLabs error:", error.response.text[:500])
+
+        raise HTTPException(
+            status_code=502,
+            detail=f"ElevenLabs rejected the request: {error.response.text[:300]}"
+        )
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print("Speech generation error:", str(error))
+
+        raise HTTPException(
+            status_code=502,
+            detail="Could not generate speech."
         )

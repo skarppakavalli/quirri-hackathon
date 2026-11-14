@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     GROQ_MODEL: str = ""
     DEEPGRAM_API_KEY: str = ""
     ELEVENLABS_API_KEY: str = ""
+    ELEVENLABS_VOICE_ID: str = ""
 
     DATABASE_URL: str = ""
 
