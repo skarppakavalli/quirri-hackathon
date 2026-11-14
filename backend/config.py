@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     COLLEGE_PARTICIPANT_KEY: str
 
     GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = ""
     DEEPGRAM_API_KEY: str = ""
     ELEVENLABS_API_KEY: str = ""
 

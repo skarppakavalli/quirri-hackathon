@@ -1,34 +1,33 @@
 import asyncio
 
 from backend.services.college_client import CollegeClient
-from backend.agent.tools.student_tools import create_student_tools
+from backend.services.auth_service import AuthService
+from backend.tools.student_tools import create_student_tools
 
 
-async def main():
-    college = CollegeClient()
+def test_get_attendance():
+    async def run_test():
+        auth = AuthService()
 
-    # Authenticate the student
-    login_data = await college.login(
-        login_id="arjun",
-        password="Kit@2026"
-    )
+        session = await auth.login("arjun", "Kit@2026")
 
-    access_token = login_data["access_token"]
+        assert session["role"] == "student"
 
-    # Create tools for this authenticated student
-    tools = create_student_tools(
-        college=college,
-        access_token=access_token
-    )
+        college = CollegeClient()
 
-    # Call the attendance tool directly
-    attendance_tool = tools[0]
+        tools = create_student_tools(
+            college,
+            session["access_token"]
+        )
 
-    result = await attendance_tool.ainvoke({})
+        attendance_tool = next(
+            tool for tool in tools
+            if tool.name == "get_attendance"
+        )
 
-    print("Attendance tool result:")
-    print(result)
+        result = await attendance_tool.ainvoke({})
 
+        assert result
+        print(result)
 
-if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(run_test())

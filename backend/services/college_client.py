@@ -1,3 +1,4 @@
+"""Knows how to communicate with the external API."""
 
 import uuid
 import httpx
@@ -146,3 +147,215 @@ class CollegeClient:
             token=token
         )
 
+
+    # -------------------------------
+    # STUDENT READ OPERATIONS
+    # -------------------------------
+
+    async def get_student_profile(self, token: str):
+        return await self.request(
+            "GET", "/v1/me", token=token
+        )
+
+    async def get_student_timetable(self, token: str):
+        return await self.request(
+            "GET", "/v1/me/timetable", token=token
+        )
+
+    async def get_calendar(
+        self,
+        token: str,
+        from_date: str | None = None,
+        to_date: str | None = None
+    ):
+        params = {}
+
+        if from_date:
+            params["from"] = from_date
+
+        if to_date:
+            params["to"] = to_date
+
+        return await self.request(
+            "GET",
+            "/v1/calendar",
+            token=token,
+            params=params
+        )
+
+    async def get_student_requests(self, token: str):
+        return await self.request(
+            "GET", "/v1/me/requests", token=token
+        )
+
+    async def get_student_request(
+        self, token: str, request_id: int
+    ):
+        return await self.request(
+            "GET",
+            f"/v1/me/requests/{request_id}",
+            token=token
+        )
+
+    # -------------------------------
+    # TEACHER OPERATIONS
+    # -------------------------------
+
+    async def get_teacher_requests(
+        self,
+        token: str,
+        status: str | None = "pending"
+    ):
+        params = {}
+
+        if status:
+            params["status"] = status
+
+        return await self.request(
+            "GET",
+            "/v1/teacher/requests",
+            token=token,
+            params=params
+        )
+
+    async def approve_request(
+        self,
+        token: str,
+        request_id: int,
+        payload: dict | None = None
+    ):
+        return await self.request(
+            "POST",
+            f"/v1/teacher/requests/{request_id}/approve",
+            token=token,
+            payload=payload
+        )
+
+    async def reject_request(
+        self,
+        token: str,
+        request_id: int,
+        payload: dict
+    ):
+        return await self.request(
+            "POST",
+            f"/v1/teacher/requests/{request_id}/reject",
+            token=token,
+            payload=payload
+        )
+
+    # ---------- STUDENT: PROFILE AND ACADEMICS ----------
+
+    async def get_profile(self, token: str):
+        """Get the currently authenticated user's profile."""
+        return await self.request("GET", "/v1/me", token=token)
+
+    async def get_timetable(self, token: str):
+        return await self.request("GET", "/v1/me/timetable", token=token)
+
+    async def get_calendar(
+        self,
+        token: str,
+        from_date: str | None = None,
+        to_date: str | None = None,
+    ):
+        params = {}
+
+        if from_date:
+            params["from"] = from_date
+
+        if to_date:
+            params["to"] = to_date
+
+        return await self.request(
+            "GET",
+            "/v1/calendar",
+            token=token,
+            params=params,
+        )
+
+    # ---------- STUDENT: LEAVE / ON-DUTY REQUESTS ----------
+
+    async def get_student_requests(self, token: str):
+        """List requests belonging to the logged-in student."""
+        return await self.request(
+            "GET",
+            "/v1/me/requests",
+            token=token,
+        )
+
+    async def get_student_request(self, token: str, request_id: int):
+        return await self.request(
+            "GET",
+            f"/v1/me/requests/{request_id}",
+            token=token,
+        )
+
+    async def create_student_request(
+        self,
+        token: str,
+        payload: dict,
+        idempotency_key: str,
+    ):
+        """
+        Submit a leave or on-duty request.
+
+        The caller must create one idempotency key per logical submission
+        and reuse that same key if retrying the request.
+        """
+        return await self.request(
+            "POST",
+            "/v1/me/requests",
+            token=token,
+            payload=payload,
+            idempotency_key=idempotency_key,
+        )
+
+    # ---------- TEACHER: REQUEST MANAGEMENT ----------
+
+    async def get_teacher_requests(
+        self,
+        token: str,
+        status: str | None = "pending",
+    ):
+        params = {}
+
+        if status:
+            params["status"] = status
+
+        return await self.request(
+            "GET",
+            "/v1/teacher/requests",
+            token=token,
+            params=params,
+        )
+
+    async def approve_request(
+        self,
+        token: str,
+        request_id: int,
+        comment: str | None = None,
+    ):
+        payload = {"comment": comment} if comment else None
+
+        return await self.request(
+            "POST",
+            f"/v1/teacher/requests/{request_id}/approve",
+            token=token,
+            payload=payload,
+        )
+
+    async def reject_request(
+        self,
+        token: str,
+        request_id: int,
+        reason: str,
+    ):
+        payload = {"reason": reason}
+
+        return await self.request(
+            "POST",
+            f"/v1/teacher/requests/{request_id}/reject",
+            token=token,
+            payload=payload,
+        )

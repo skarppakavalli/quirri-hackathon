@@ -22,3 +22,5 @@ data/*
 
 # Logs
 *.log
+
+openapi.json
